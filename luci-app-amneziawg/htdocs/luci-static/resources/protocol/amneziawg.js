@@ -64,15 +64,29 @@ function generateDescription(name, texts) {
 	]);
 }
 
-function invokeQREncode(data, code) {
+function invokeQREncode(data, div) {
+	
+	var code = div.children[0];
+	var btn = div.children[1];
+	
+	dom.content(btn, [
+				E('a', {
+					'class': 'btn cbi-button-action',
+					'style': 'text-align: center',
+					'href': 'data:text/plain;charset=utf-8,' + encodeURIComponent(data),
+					'download': 'amneziawg.conf'
+
+				}, ['Download Configuration']),	
+	]);
+	
 	return fs.exec_direct('/usr/bin/qrencode', [
 		'--inline', '--8bit', '--type=SVG',
 		'--output=-', '--', data
 	]).then(function(svg) {
-		code.style.opacity = '';
+		div.style.opacity = '';
 		dom.content(code, Object.assign(E(svg), { style: 'width:100%;height:auto' }));
 	}).catch(function(error) {
-		code.style.opacity = '';
+		div.style.opacity = '';
 
 		if (L.isObject(error) && error.name == 'NotFoundError') {
 			dom.content(code, [
@@ -743,39 +757,65 @@ return network.registerProtocol('amneziawg', {
 
 		o.modalonly = true;
 
-		o.createPeerConfig = function(section_id, endpoint, ips) {
+	        o.createPeerConfig = function (section_id, endpoint, ips, eips, dns) {
 			var pub = s.formvalue(s.section, 'public_key'),
-			    port = s.formvalue(s.section, 'listen_port') || '51820',
-                jc = s.formvalue
-			    prv = this.section.formvalue(section_id, 'private_key'),
-			    psk = this.section.formvalue(section_id, 'preshared_key'),
-			    eport = this.section.formvalue(section_id, 'endpoint_port'),
-			    keep = this.section.formvalue(section_id, 'persistent_keepalive');
-
-			// If endpoint is IPv6 we must escape it with []
+			port = s.formvalue(s.section, 'listen_port') || '51820',
+			prv = this.section.formvalue(section_id, 'private_key'),
+			psk = this.section.formvalue(section_id, 'preshared_key'),
+			eport = this.section.formvalue(section_id, 'endpoint_port'),
+			keep = this.section.formvalue(section_id, 'persistent_keepalive'),
+			jc = s.formvalue(s.section, 'awg_jc'),
+			jmin = s.formvalue(s.section, 'awg_jmin'),
+			jmax = s.formvalue(s.section, 'awg_jmax'),
+			s1 = s.formvalue(s.section, 'awg_s1'),
+			s2 = s.formvalue(s.section, 'awg_s2'),
+			h1 = s.formvalue(s.section, 'awg_h1'),
+			h2 = s.formvalue(s.section, 'awg_h2'),
+			h3 = s.formvalue(s.section, 'awg_h3'),
+			h4 = s.formvalue(s.section, 'awg_h4');		
+				
 			if (endpoint.indexOf(':') > 0) {
-				endpoint = '['+endpoint+']';
+			endpoint = '[' + endpoint + ']';
 			}
-
-			return [
+			var configLines = [
 				'[Interface]',
 				'PrivateKey = ' + prv,
 				eport ? 'ListenPort = ' + eport : '# ListenPort not defined',
+				eips && eips.length ? 'Address = ' + eips.join(', ') : '# Address not defined',
+				dns && dns.length ? 'DNS = ' + dns.join(', ') : '# DNS not defined',
+				''
+			];
+	
+			if (jc) configLines.push('jc = ' + jc);
+			if (jmin) configLines.push('jmin = ' + jmin);
+			if (jmax) configLines.push('jmax = ' + jmax);
+			if (s1) configLines.push('s1 = ' + s1);
+			if (s2) configLines.push('s2 = ' + s2);
+			if (h1) configLines.push('h1 = ' + h1);
+			if (h2) configLines.push('h2 = ' + h2);
+			if (h3) configLines.push('h3 = ' + h3);
+			if (h4) configLines.push('h4 = ' + h4);
+	
+			configLines.push(
 				'',
 				'[Peer]',
 				'PublicKey = ' + pub,
 				psk ? 'PresharedKey = ' + psk : '# PresharedKey not used',
 				ips && ips.length ? 'AllowedIPs = ' + ips.join(', ') : '# AllowedIPs not defined',
 				endpoint ? 'Endpoint = ' + endpoint + ':' + port : '# Endpoint not defined',
-				keep ? 'PersistentKeepAlive = ' + keep : '# PersistentKeepAlive not defined'
-			].join('\n');
-		};
+				keep ? 'PersistentKeepAlive = ' + keep : '# PersistentKeepAlive not defined',
+				''
+			);
+	
+			return configLines.join('\n');
+	        };
 
 		o.handleGenerateQR = function(section_id, ev) {
 			var mapNode = ss.getActiveModalMap(),
-			    headNode = mapNode.parentNode.querySelector('h4'),
-			    configGenerator = this.createPeerConfig.bind(this, section_id),
-			    parent = this.map;
+				headNode = mapNode.parentNode.querySelector('h4'),
+				configGenerator = this.createPeerConfig.bind(this, section_id),
+				parent = this.map,
+				eips = this.section.formvalue(section_id, 'allowed_ips');
 
 			return Promise.all([
 				network.getWANNetworks(),
@@ -804,21 +844,33 @@ return network.registerProtocol('amneziawg', {
 
 				var ips = [ '0.0.0.0/0', '::/0' ];
 
+				var dns = [];
+
 				var qrm, qrs, qro;
 
-				qrm = new form.JSONMap({ config: { endpoint: hostnames[0], allowed_ips: ips } }, null, _('The generated configuration can be imported into a AmneziaWG client application to set up a connection towards this device.'));
+				qrm = new form.JSONMap({
+		                    config: {
+		                        endpoint: hostnames[0],
+		                        allowed_ips: ips,
+					addresses: eips,
+					dns_servers: dns
+		                    }
+		                }, null, _('The generated configuration can be imported into a AmneziaWG client application to set up a connection towards this device.'));
+				
 				qrm.parent = parent;
 
 				qrs = qrm.section(form.NamedSection, 'config');
 
 				function handleConfigChange(ev, section_id, value) {
 					var code = this.map.findElement('.qr-code'),
-					    conf = this.map.findElement('.client-config'),
-					    endpoint = this.section.getUIElement(section_id, 'endpoint'),
-					    ips = this.section.getUIElement(section_id, 'allowed_ips');
+					conf = this.map.findElement('.client-config'),
+					endpoint = this.section.getUIElement(section_id, 'endpoint'),
+					ips = this.section.getUIElement(section_id, 'allowed_ips');
+					eips = this.section.getUIElement(section_id, 'addresses');
+					dns = this.section.getUIElement(section_id, 'dns_servers');					
 
 					if (this.isValid(section_id)) {
-						conf.firstChild.data = configGenerator(endpoint.getValue(), ips.getValue());
+						conf.firstChild.data = configGenerator(endpoint.getValue(), ips.getValue(), eips.getValue(), dns.getValue());
 						code.style.opacity = '.5';
 
 						invokeQREncode(conf.firstChild.data, code);
@@ -836,18 +888,36 @@ return network.registerProtocol('amneziawg', {
 				ips.forEach(function(ip) { qro.value(ip) });
 				qro.onchange = handleConfigChange;
 
+				qro = qrs.option(form.DynamicList, 'dns_servers', _('DNS Servers'), _('DNS servers for the remote clients using this tunnel to your openwrt device. Some wireguard clients require this to be set.'));
+				qro.datatype = 'ipaddr';
+				qro.default = dns;
+				qro.onchange = handleConfigChange;
+
+				qro = qrs.option(form.DynamicList, 'addresses', _('Addresses'), _('IP addresses for the peer to use inside the tunnel. Some clients require this setting.'));
+				qro.datatype = 'ipaddr';
+				qro.default = eips;
+				eips.forEach(function(eip) { qro.value(eip) });
+				qro.onchange = handleConfigChange;				
+
 				qro = qrs.option(form.DummyValue, 'output');
 				qro.renderWidget = function() {
-					var peer_config = configGenerator(hostnames[0], ips);
+					var peer_config = configGenerator(hostnames[0], ips, eips, dns);
 
 					var node = E('div', {
 						'style': 'display:flex;flex-wrap:wrap;align-items:center;gap:.5em;width:100%'
 					}, [
 						E('div', {
 							'class': 'qr-code',
-							'style': 'width:320px;flex:0 1 320px;text-align:center'
+							'style': 'display:flex; flex-direction: column; text-align: center',
 						}, [
-							E('em', { 'class': 'spinning' }, [ _('Generating QR code…') ])
+							E('div', {
+								'style': 'width:320px;flex:0 1 320px;text-align:center'
+							}, [
+								E('em', { 'class': 'spinning' }, [ _('Generating QR code…') ])
+							]),
+							
+							E('div', {
+							}, ['Download Configuration']),	
 						]),
 						E('pre', {
 							'class': 'client-config',
