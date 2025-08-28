@@ -50,7 +50,7 @@ jobs:
       - name: Manually set job-config
         id: set_config
         run: |
-          json_config='[{"tag":"24.10.2","target":"armsr","subtarget":"armv8","vermagic":"dc11c3adbce3c4e9b0f57b9465d769de","pkgarch":"aarch64_generic"}]'
+          job_config='[{"tag":"24.10.2","target":"armsr","subtarget":"armv8","vermagic":"dc11c3adbce3c4e9b0f57b9465d769de","pkgarch":"aarch64_generic"}]'
           echo "job-config=${json_config}" >> $GITHUB_OUTPUT
 
   build:
